@@ -1,0 +1,104 @@
+# Wine list read
+require(pdftools)
+require(readtext)
+require(dplyr)
+require(tidytext)
+require(stringr)
+require(XML)
+require(RCurl)
+setwd("~/Documents/R/wine")
+
+# wine attributes
+vintage <- (1900:2018) # vintages 1900 to 2018
+vintage <- c("NV",vintage) # append NV or non vintage
+type <- c("red","white","rose","sparkling","sweet/dessert")
+country <- read.csv("winespoke_country.csv",encoding = "UTF-8")
+region <- read.csv("winespoke_region.csv",encoding = "UTF-8")
+appellation <- read.csv("winespoke_appellation.csv",encoding = "UTF-8")
+producers <- read.csv("winespoke_producers.csv", stringsAsFactors=FALSE, fileEncoding="latin1") # file to read in producers
+
+# Jean-Georges
+jgURL <- "http://www.jean-georgesrestaurant.com/content/pdfs/jg-list-3.19.18.pdf"
+jgRaw <- pdf_text(jgURL) # read wine list pdf
+jg1 <- unlist(strsplit(jgRaw,"\n"))  # create records for each wine
+jg2 <- data_frame(wine=jg1) # put list into data frame
+jg2$vintage <- NA # create vintage 
+jg2$type <- NA # type red, white, rose, etc.
+jg2$region <- NA # region (i.e, Bordeaux)
+jg2$location <- c("Jean-Georges")
+# jg2$rawtext <- jg2$wine # save raw text?
+# 1. identify page no. numPages <- pdf_info(jgURL)$pages 
+# 2a. first few lines after page no. are headers ie, page 1 head "COCKTAILS AND BEER" 2b. headers within a page? 
+# types of headers: Bottle/Glass Type, Wine Type (identify white, red, champage, dessert...), 
+        # Country (identify country), Producer
+
+# extract price info
+jg2$price <- NA 
+jg2$price <- word(jg2$wine,-1) # price is last few #s for each wine alternative is #str_sub(jg2[[1]],-4,-1) 
+jg2$price <- as.numeric(jg2$price)
+
+# extract bin identifier
+jg2$bin <- word(jg2$wine,1) #str_sub(jg2[[1]],1,5)
+jg2$bin <- gsub("[^0-9]", NA, jg2$bin) # remove non numeric
+
+# extract wine descriptive info
+#jg2$wine <- ifelse(!is.na(as.numeric(substring(jg2$wine,1,1))),(trimws(str_sub(jg2$wine,6,-6))),jg2$wine) # check's if first letter number and if so trims bin
+#unlist(str_extract(substring(jg2$wine,5),regex("[[:digit:]]{4}")))
+jg2$rawtext2 <- gsub(regex("1er"),"Premier",jg2$wine) # need to handle for 1er cru
+jg2$wine_description <- trimws(gsub(regex("[[:digit:]]"),"",jg2$rawtext2),c("both")) # removes digits
+jg2$wine_description <- gsub(regex("Premier"),"1er",jg2$wine_description) # re-convert 1er from Premier
+jg2$rawtext2 <- NULL # remove 
+
+# extract vintage
+#jg2$vintage <-unlist(str_extract(substring(jg2$wine,5),regex("[[:digit:]]{4}"))) # handles years what about NV
+#> sub("^.*\\s+((?:\\S+\\s+){1}\\S+)$", "\\1", jg2$rawtext, perl = TRUE) # 2nd attempt to grab NV in addition to digits
+jg2$vintage <- word(str_extract(jg2$wine,"(?:\\S+\\s+){1}\\S+(?=\\s*$)"),1) # extract vintage info including NV
+jg2$vintage <- ifelse(jg2$vintage %in% "MV","NV",jg2$vintage) # MV (mixed vintage) to NV (non-vintage) for vintage
+jg2$vintage <- ifelse(jg2$vintage %in% vintage, jg2$vintage,NA)
+
+# [133] "H A L F B OT T L E S" # add identifier for wines by glass, half bottle, magnum?
+
+jg2[188:317,]$type <- c("sparkling")
+
+# [318] "W HITE W INES" 
+#whiteWineStart <- which(jg2$wine == "W HITE W INES")
+jg2[318:737,]$type <- c("white")
+#  [822] "RED WINES"
+#redWineStart <- which(jg2$wine == "RED WINES")
+jg2[738:1427,]$type <- c("red")
+jg2[1496:1597,]$type <- c("dessert")
+
+write.csv(jg2,file="jeangeorges.csv", fileEncoding = "latin1")
+
+# Canlis wine list
+canRaw <- pdf_text("https://canlis.com/uploads/canlis_wine_list.pdf") # read wine list pdf
+can1 <- unlist(strsplit(canRaw,"\n"))  # create records for each wine
+can2 <- data_frame(wine=can1) # put list into data frame
+can2$vintage <- NA # create vintage 
+can2$type <- NA # type red, white, rose, etc.
+can2$region <- NA # region (i.e, Bordeaux)
+can2$rawtext <- can2$wine
+can2$location <- c("Canlis")
+can2$wine <- gsub("•","",can2$wine) # cleanup text
+can2$wine <- gsub("\003","",can2$wine) # cleanup text
+
+# extract price
+can2$price <- NA 
+can2$price <- word(can2$wine,-1) # price is last few #s for each wine alternative is #str_sub(jg2[[1]],-4,-1) 
+can2$price <- as.numeric(can2$price)
+
+# extract bin identifier
+can2$bin <- word(can2$wine,1) #str_sub(jg2[[1]],1,5)
+can2$bin <- gsub("[^0-9]", NA, can2$bin) # remove non numeric
+
+# remove bin and price info
+can2$wine <- ifelse(!is.na(as.numeric(substring(can2$wine,1,1))),(trimws(str_sub(can2$wine,6,-6))),can2$wine) # check's if first letter number and if so trims bin
+
+# extract vintage
+can2$vintage <-unlist(str_extract(substring(can2$wine,5),regex("[[:digit:]]{4}")))
+
+# Del Posto
+dpURL <- "https://hub.binwise.com/print/winelist_pdf.aspx?listid=685&locationid=300"
+
+# Per Se
+perseURL <- "https://hub.binwise.com/print/PerSeWineList_PDF.aspx?ListId=123&LocationId=87"
